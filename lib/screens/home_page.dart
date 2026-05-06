@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:auth_app/components/%20%20common_app_bar.dart';
 import 'package:auth_app/models/restaurant.dart';
 import 'package:auth_app/providers/auth_provider.dart';
 import 'package:auth_app/screens/login_page.dart';
@@ -32,17 +33,31 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController inputController = TextEditingController();
 
   bool isLoading = false;
+  Map<String, dynamic>? intent;
   List<Restaurant> restaurants = [];
 
   Future<Position> getCurrentPosition() async {
-    LocationPermission permission = await Geolocator.requestPermission();
+// 1️⃣ 위치 서비스 켜져있는지 확인
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('위치 서비스가 꺼져 있습니다.');
+    }
 
+    // 2️⃣ 현재 권한 상태 확인
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    // 3️⃣ 권한 없으면 요청
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
 
-    if (permission == LocationPermission.deniedForever ||
-        permission == LocationPermission.denied) {
+    // 4️⃣ 완전 거부된 경우
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('위치 권한이 영구적으로 거부되었습니다. 설정에서 허용해주세요.');
+    }
+
+    // 5️⃣ 여전히 거부된 경우
+    if (permission == LocationPermission.denied) {
       throw Exception('위치 권한이 필요합니다.');
     }
 
@@ -52,13 +67,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   Future<void> recommendRestaurants() async {
-    if (inputController.text.trim().isEmpty) return;
+    final message = inputController.text.trim();
+    if (message.isEmpty) return;
 
     setState(() {
       isLoading = true;
       restaurants = [];
+      intent = null;
     });
 
     try {
@@ -71,7 +87,7 @@ class _HomePageState extends State<HomePage> {
           // 'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'message': inputController.text.trim(),
+          'message': message,
           'lat': position.latitude,
           'lng': position.longitude,
         }),
@@ -79,9 +95,14 @@ class _HomePageState extends State<HomePage> {
 
       final data = jsonDecode(response.body);
 
+      if (response.statusCode != 200) {
+        throw Exception(data['message'] ?? '추천 요청 실패');
+      }
+
       final List items = data['restaurants'] ?? [];
 
       setState(() {
+        intent = data['intent'];
         restaurants = items.map((e) => Restaurant.fromJson(e)).toList();
       });
     } catch (e) {
@@ -89,9 +110,11 @@ class _HomePageState extends State<HomePage> {
         SnackBar(content: Text('추천 중 오류가 발생했습니다: $e')),
       );
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -104,10 +127,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff7f7f7),
-      appBar: AppBar(
-        title: const Text('맛집 추천'),
-      ),
+      backgroundColor: const Color(0xFFEFF6FF),
+      appBar: const CommonAppBar(title: '맛집 추천'),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -133,6 +154,38 @@ class _HomePageState extends State<HomePage> {
             if (isLoading) const CircularProgressIndicator(),
             if (!isLoading && restaurants.isEmpty)
               const Text('추천받고 싶은 음식을 입력해보세요.'),
+            if (intent != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF), // 연한 파랑
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${intent?['mood'] ?? ''} · ${intent?['recommendType'] ?? ''}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (restaurants.isNotEmpty)
+                      Text(
+                        restaurants.first.reason,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          height: 1.4,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             Expanded(
               child: ListView.builder(
                 itemCount: restaurants.length,
@@ -140,6 +193,9 @@ class _HomePageState extends State<HomePage> {
                   final item = restaurants[index];
 
                   return Card(
+                    color: Colors.white,
+                    elevation: 2, // 🔥 핵심
+                    shadowColor: Colors.black12,
                     margin: const EdgeInsets.only(bottom: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -160,11 +216,6 @@ class _HomePageState extends State<HomePage> {
                           Text('⭐ ${item.rating} · ${item.distance}m'),
                           const SizedBox(height: 6),
                           Text(item.address),
-                          const SizedBox(height: 10),
-                          Text(
-                            item.reason,
-                            style: const TextStyle(color: Colors.black87),
-                          ),
                           const SizedBox(height: 12),
                           Align(
                             alignment: Alignment.centerRight,

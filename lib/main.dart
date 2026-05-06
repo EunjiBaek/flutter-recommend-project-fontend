@@ -15,10 +15,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider(),
-      child: const MaterialApp(
+      child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Flutter Auth Example',
-        home: SplashPage(),
+        // 🔥 여기 추가
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF3B82F6), // 파란색
+          ),
+          useMaterial3: true,
+        ),
+        home: const SplashPage(),
       ),
     );
   }
